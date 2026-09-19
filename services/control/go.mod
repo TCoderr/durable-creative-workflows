@@ -11,7 +11,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.14.1
 	github.com/golang-jwt/jwt/v5 v5.2.3
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/nats-io/nats.go v1.45.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.11.1
