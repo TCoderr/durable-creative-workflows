@@ -117,6 +117,19 @@ jobs:
             velin-postgres:17-security.1 velin-temporal:1.8.3-security.1 velin-nats:2.14.6-security.1 \
             velin-prometheus:3.14.0-security.1 otel/opentelemetry-collector:0.160.0 \
             velin-grafana:13.2.2-security.1 alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 velin-trivy:0.74.0-security.1
+      - name: Retain the image scan reports and SBOMs, including on failure
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: image-security-${{ github.sha }}
+          path: |
+            .local/security/*.vulnerabilities.json
+            .local/security/*.sbom.cdx.json
+            .local/security/*.scan-exit-code
+            .local/security/*.sbom-exit-code
+            .local/security/*.image-id
+          retention-days: 14
+          if-no-files-found: warn
       - name: Retain the tested images without rebuilding
         if: github.event_name != 'pull_request'
         run: |
