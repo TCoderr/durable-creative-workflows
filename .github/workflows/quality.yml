@@ -97,7 +97,7 @@ jobs:
       - run: npm ci
       - run: npm run local:env
       # The one build is used for runtime tests and retained as the release artifact.
-      - run: docker compose --env-file .local/stack.env --profile observability build --provenance=true --sbom=true
+      - run: docker compose --env-file .local/stack.env --profile observability build
       - run: docker compose --env-file .local/stack.env --profile observability up -d --no-build
       - run: python3 scripts/verify-topology.py --phase normal
       - run: python3 scripts/verify-topology.py --phase durability
