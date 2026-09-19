@@ -541,10 +541,19 @@ def observability():
         started = time.perf_counter()
         require('/api/v1/commissions?limit=1')
         samples.append((time.perf_counter() - started) * 1000)
-    with urllib.request.urlopen(f'http://127.0.0.1:{PORTS["prometheus"]}/api/v1/query?query=up', timeout=10) as response:
-        targets = json.load(response)
-    assert targets['status'] == 'success'
-    up = {item['metric'].get('job'): item['value'][1] for item in targets['data']['result']}
+    # Earlier phases recreate the capability container with fault overrides, so
+    # the most recent scrape can still be the one that failed while it restarted.
+    # Wait for the next successful scrape of every target before asserting.
+    up = {}
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        with urllib.request.urlopen(f'http://127.0.0.1:{PORTS["prometheus"]}/api/v1/query?query=up', timeout=10) as response:
+            targets = json.load(response)
+        assert targets['status'] == 'success'
+        up = {item['metric'].get('job'): item['value'][1] for item in targets['data']['result']}
+        if all(up.get(job) == '1' for job in ['velin-api', 'velin-worker', 'velin-capabilities']):
+            break
+        time.sleep(2)
     assert all(up.get(job) == '1' for job in ['velin-api', 'velin-worker', 'velin-capabilities']), up
     span_names = ['http.request', 'workflow.start', 'workflow.run.started', 'capability.activity', 'provider.invoke', 'tool.curated_research',
                   'persistence.step.save', 'workflow.revision.created', 'workflow.approval.requested', 'workflow.decision.recorded',
