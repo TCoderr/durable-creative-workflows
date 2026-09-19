@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, writeFile, access, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, access, readFile, chmod } from 'node:fs/promises';
 
 const directory = new URL('../.local/', import.meta.url);
 const target = new URL('stack.env', directory);
@@ -44,6 +44,9 @@ const aiToken = environment
   ?.slice('CAPABILITIES_TOKEN='.length);
 if (!aiToken)
   throw new Error('Existing local environment has no AI service token.');
-await writeFile(new URL('capabilities-token', directory), aiToken, {
-  mode: 0o600,
-});
+// Prometheus reads this token inside its container as an unprivileged user, so
+// the file must be world-readable. It lives in the ignored .local directory and
+// only grants access to the loopback-bound local capability service.
+const tokenFile = new URL('capabilities-token', directory);
+await writeFile(tokenFile, aiToken, { mode: 0o644 });
+await chmod(tokenFile, 0o644);

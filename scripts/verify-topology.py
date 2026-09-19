@@ -554,7 +554,11 @@ def observability():
         if all(up.get(job) == '1' for job in ['velin-api', 'velin-worker', 'velin-capabilities']):
             break
         time.sleep(2)
-    assert all(up.get(job) == '1' for job in ['velin-api', 'velin-worker', 'velin-capabilities']), up
+    if not all(up.get(job) == '1' for job in ['velin-api', 'velin-worker', 'velin-capabilities']):
+        with urllib.request.urlopen(f'http://127.0.0.1:{PORTS["prometheus"]}/api/v1/targets?state=active', timeout=10) as response:
+            active = json.load(response)['data']['activeTargets']
+        detail = {item['labels'].get('job'): {'health': item.get('health'), 'lastError': item.get('lastError'), 'scrapeUrl': item.get('scrapeUrl')} for item in active}
+        raise AssertionError(clean(json.dumps({'up': up, 'targets': detail})))
     span_names = ['http.request', 'workflow.start', 'workflow.run.started', 'capability.activity', 'provider.invoke', 'tool.curated_research',
                   'persistence.step.save', 'workflow.revision.created', 'workflow.approval.requested', 'workflow.decision.recorded',
                   'artifact.production', 'persistence.artifact.save', 'workflow.workflow.completed']
