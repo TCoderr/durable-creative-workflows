@@ -1,0 +1,388 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velin-api
+spec:
+  # A reviewed release must supply immutable digests/configuration before replicas > 0.
+  replicas: 0
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: velin-api
+  template:
+    metadata:
+      labels:
+        app: velin-api
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: velin-api
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: velin-control:REQUIRES_DIGEST
+          imagePullPolicy: IfNotPresent
+          args: [api]
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: HTTP_ADDR
+              value: ":8080"
+          envFrom:
+            - configMapRef:
+                name: velin-config
+            - secretRef:
+                name: velin-api-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: temporary
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velin-api
+spec:
+  selector:
+    app: velin-api
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: velin-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: velin-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velin-worker
+spec:
+  # A reviewed release must supply immutable digests/configuration before replicas > 0.
+  replicas: 0
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: velin-worker
+  template:
+    metadata:
+      labels:
+        app: velin-worker
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: velin-worker
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: velin-control:REQUIRES_DIGEST
+          imagePullPolicy: IfNotPresent
+          args: [worker]
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: HTTP_ADDR
+              value: ":8081"
+          envFrom:
+            - configMapRef:
+                name: velin-config
+            - secretRef:
+                name: velin-worker-secrets
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: temporary
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velin-worker
+spec:
+  selector:
+    app: velin-worker
+  ports:
+    - port: 8081
+      targetPort: http
+      name: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: velin-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: velin-worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velin-capabilities
+spec:
+  # A reviewed release must supply immutable digests/configuration before replicas > 0.
+  replicas: 0
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: velin-capabilities
+  template:
+    metadata:
+      labels:
+        app: velin-capabilities
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: velin-capabilities
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: capabilities
+          image: velin-capabilities:REQUIRES_DIGEST
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: HTTP_ADDR
+              value: ":8000"
+          envFrom:
+            - configMapRef:
+                name: velin-config
+            - secretRef:
+                name: velin-capabilities-secrets
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: temporary
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velin-capabilities
+spec:
+  selector:
+    app: velin-capabilities
+  ports:
+    - port: 8000
+      targetPort: http
+      name: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: velin-capabilities
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: velin-capabilities
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velin-frontend
+spec:
+  # A reviewed release must supply immutable digests/configuration before replicas > 0.
+  replicas: 0
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: velin-frontend
+  template:
+    metadata:
+      labels:
+        app: velin-frontend
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: velin-frontend
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: velin-frontend:REQUIRES_DIGEST
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4173
+              name: http
+          env:
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "4173"
+            - name: API_UPSTREAM
+              value: http://velin-api:8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: temporary
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velin-frontend
+spec:
+  selector:
+    app: velin-frontend
+  ports:
+    - port: 4173
+      targetPort: http
+      name: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: velin-frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: velin-frontend

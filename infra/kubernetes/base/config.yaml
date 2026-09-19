@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: velin-config
+data:
+  APP_ENV: production
+  DATABASE_AUTH: azure
+  VELIN_PROVIDER: http
+  VELIN_TEST_MODE: "0"
+  TEMPORAL_ADDRESS: REQUIRES_TEMPORAL_CLOUD_ADDRESS
+  TEMPORAL_NAMESPACE: REQUIRES_TEMPORAL_NAMESPACE
+  TEMPORAL_TASK_QUEUE: velin-commissions
+  TEMPORAL_TLS_CERT: /var/run/secrets/temporal/tls.crt
+  TEMPORAL_TLS_KEY: /var/run/secrets/temporal/tls.key
+  CAPABILITIES_URL: http://velin-capabilities:8000
+  AZURE_BLOB_ENDPOINT: REQUIRES_AZURE_BLOB_ENDPOINT
+  AZURE_BLOB_CONTAINER: artifacts
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability:4318

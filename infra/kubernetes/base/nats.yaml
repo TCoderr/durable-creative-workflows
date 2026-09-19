@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velin-nats
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: velin-nats
+  template:
+    metadata:
+      labels:
+        app: velin-nats
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nats
+          image: nats:REQUIRES_DIGEST
+          args: [-c, /run/nats/nats.conf]
+          ports:
+            - {name: client, containerPort: 4222}
+            - {name: monitor, containerPort: 8222}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            httpGet: {path: /healthz, port: monitor}
+          livenessProbe:
+            httpGet: {path: /healthz, port: monitor}
+          volumeMounts:
+            - {name: config, mountPath: /run/nats, readOnly: true}
+      volumes:
+        - name: config
+          secret:
+            secretName: velin-nats-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velin-nats
+spec:
+  selector:
+    app: velin-nats
+  ports:
+    - {name: client, port: 4222, targetPort: client}

@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: velin
+  namespace: argocd
+spec:
+  description: VELIN deployment configuration only; never Temporal business workflow state.
+  # No repository is authorized by default. An operator must explicitly configure it.
+  sourceRepos: []
+  destinations:
+    - namespace: velin-dev
+      server: https://kubernetes.default.svc
+    - namespace: velin-staging
+      server: https://kubernetes.default.svc
+    - namespace: velin-prod
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace

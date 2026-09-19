@@ -1,0 +1,137 @@
+name: Quality and immutable build
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: {node-version: "24", cache: npm}
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test:unit
+      - run: npm run build
+      - run: npm audit --audit-level=high
+      - run: node scripts/secret-scan.mjs
+  control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run: {working-directory: services/control}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: {go-version: "1.26.8", cache-dependency-path: services/control/go.sum}
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: Real Temporal dev server — crash recovery, cancellation and replay
+        run: VELIN_TEMPORAL_DEV=1 go test -race -run 'TestDevServer|TestReplayRecordedHistory' -timeout 10m ./internal/platform
+      - run: |
+          mkdir -p ../../.local/bin
+          go build -trimpath -o ../../.local/bin/velin ./cmd/velin
+          ../../.local/bin/velin replay internal/platform/testdata/durable-commission-resume.json
+  capabilities:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run: {working-directory: services/capabilities}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@v10.0.1
+        with: {version: "0.11.32", python-version: "3.14", enable-cache: true}
+      - run: uv sync --frozen
+      - run: uv run ruff check velin_capabilities tests
+      - run: uv run ruff format --check velin_capabilities tests
+      - run: uv run mypy velin_capabilities
+      - run: uv run pytest -q
+      - run: uv run --with openapi-spec-validator==0.9.0 python ../../docs/api/validate.py --standards
+      - run: uv run python -m velin_capabilities.eval_cli
+  infrastructure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {persist-credentials: false}
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with: {terraform-version: "1.13.3", terraform-wrapper: false}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version: "1.26.8", cache: false}
+      - run: GOBIN="$PWD/.local/bin" CGO_ENABLED=0 go install github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0
+      - run: GOBIN="$PWD/.local/bin" CGO_ENABLED=0 go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - run: .local/bin/actionlint
+      - run: bash scripts/validate-infra.sh
+  topology-and-images:
+    needs: [frontend, control, capabilities, infrastructure]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      COMPOSE_PARALLEL_LIMIT: "1"
+      APP_VERSION: ${{ github.sha }}
+      VELIN_INTEGRATION: "1"
+      VELIN_TEST_ENV_FILE: ${{ github.workspace }}/.local/stack.env
+      E2E_STACK: "1"
+      E2E_BASE_URL: http://127.0.0.1:4173
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: "24", cache: npm}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version: "1.26.8", cache-dependency-path: services/control/go.sum}
+      - run: npm ci
+      - run: npm run local:env
+      # The one build is used for runtime tests and retained as the release artifact.
+      - run: docker compose --env-file .local/stack.env --profile observability build --provenance=true --sbom=true
+      - run: docker compose --env-file .local/stack.env --profile observability up -d --no-build
+      - run: python3 scripts/verify-topology.py --phase normal
+      - run: python3 scripts/verify-topology.py --phase durability
+      - run: python3 scripts/verify-topology.py --phase crash
+      - run: python3 scripts/verify-topology.py --phase capabilities
+      - run: python3 scripts/verify-topology.py --phase security
+      - run: python3 scripts/verify-topology.py --phase outages
+      - run: python3 scripts/verify-topology.py --phase events
+      - run: python3 scripts/verify-topology.py --phase observability
+      - run: python3 scripts/verify-topology.py --phase runtime_smoke
+      - run: go test -race ./...
+        working-directory: services/control
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --project=desktop
+      - run: |
+          bash scripts/scan-images.sh "velin-control:$APP_VERSION" "velin-capabilities:$APP_VERSION" "velin-frontend:$APP_VERSION" \
+            velin-postgres:17-security.1 velin-temporal:1.8.3-security.1 velin-nats:2.14.6-security.1 \
+            velin-prometheus:3.14.0-security.1 otel/opentelemetry-collector:0.160.0 \
+            velin-grafana:13.2.2-security.1 alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 velin-trivy:0.74.0-security.1
+      - name: Retain the tested images without rebuilding
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p .local/release
+          docker save -o .local/release/images.tar "velin-control:$APP_VERSION" "velin-capabilities:$APP_VERSION" "velin-frontend:$APP_VERSION" velin-nats:2.14.6-security.1
+          sha256sum .local/release/images.tar > .local/release/images.sha256
+          printf '%s\n' "$APP_VERSION" > .local/release/commit.txt
+      - uses: actions/upload-artifact@v7.0.1
+        if: github.event_name != 'pull_request'
+        with:
+          name: tested-images-${{ github.sha }}
+          path: .local/release/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+      - name: Stop local services while retaining runner evidence
+        if: always()
+        run: docker compose --env-file .local/stack.env --profile observability stop

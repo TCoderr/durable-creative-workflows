@@ -1,0 +1,4346 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "VELIN control-plane API",
+    "version": "2.0.0",
+    "description": "Implemented Go API. Temporal owns workflow state; PostgreSQL owns the append-only record; NATS carries disposable hints. Every private route requires a verified subject and server-side ownership; other owners receive 404. Public record routes are read-only and redacted. JSON request limit 32 KiB; unknown fields rejected. No cloud deployment or live model execution is implied."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080",
+      "description": "Local Go API. /api/v1 is also proxied same-origin by the frontend on 4173."
+    }
+  ],
+  "security": [
+    {
+      "UserBearer": []
+    }
+  ],
+  "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "versionedLiveness",
+        "summary": "Process liveness",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "versionedReadiness",
+        "summary": "Required dependency readiness",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "liveness",
+        "summary": "Process liveness",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Process responds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "alive"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "readiness",
+        "summary": "Required dependency readiness",
+        "description": "NATS is optional and does not fail readiness.",
+        "responses": {
+          "200": {
+            "description": "PostgreSQL and Temporal are healthy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL or Temporal unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "summary": "Private operational Prometheus metrics",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition; keep network-private.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/public/records": {
+      "get": {
+        "operationId": "listPublicRecords",
+        "summary": "List published workflow records",
+        "description": "No authentication. Rate limited by client address. Only commissions the owner published appear.",
+        "responses": {
+          "200": {
+            "description": "Newest first, at most 20.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "publication_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "commission_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "published_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "publication_id",
+                          "commission_id",
+                          "title",
+                          "published_at"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/public/records/{id}": {
+      "get": {
+        "operationId": "getPublicRecord",
+        "summary": "Read one published workflow record",
+        "description": "No authentication. The owner subject and the direction body are omitted.",
+        "responses": {
+          "200": {
+            "description": "Redacted aggregate record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Publication UUID returned when the owner published the commission."
+          }
+        ]
+      }
+    },
+    "/api/v1/session": {
+      "get": {
+        "operationId": "session",
+        "summary": "Resolve authenticated identity and provider mode",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Identity from server-side authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "subject": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "local-bearer",
+                        "oidc"
+                      ]
+                    },
+                    "provider_mode": {
+                      "type": "string",
+                      "enum": [
+                        "deterministic",
+                        "http"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "subject",
+                    "mode",
+                    "provider_mode"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/commissions": {
+      "post": {
+        "operationId": "createCommission",
+        "summary": "Create an immutable commission",
+        "description": "Idempotency key is scoped to the authenticated subject. Same brief/key returns the original with 200; changed content conflicts 409. Creation does not start Temporal.",
+        "responses": {
+          "201": {
+            "description": "Commission owned by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Commission"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative commission resource path."
+              }
+            }
+          },
+          "200": {
+            "description": "Commission owned by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Commission"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative commission resource path."
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED; request is non-retryable until corrected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "IDEMPOTENCY_CONFLICT, DECISION_CONFLICT, NOT_WAITING, STALE_APPROVAL or EVALUATION_GATE_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "PAYLOAD_TOO_LARGE; public JSON request limit 32 KiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "UNSUPPORTED_MEDIA_TYPE; JSON endpoints require Content-Type:application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brief": {
+                    "$ref": "#/components/schemas/BriefInput"
+                  }
+                },
+                "required": [
+                  "brief"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-max-request-bytes": 32768
+      },
+      "get": {
+        "operationId": "listCommissions",
+        "summary": "List only caller-owned commissions",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Ordered created_at descending, then UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Commission"
+                      }
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "limit",
+                    "offset"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED; request is non-retryable until corrected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000,
+              "default": 0
+            }
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/commissions/{id}": {
+      "get": {
+        "operationId": "getCommission",
+        "summary": "Read an owned commission",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Immutable brief and stable workflow identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/commissions/{id}/start": {
+      "post": {
+        "operationId": "startWorkflow",
+        "summary": "Start the durable commission workflow",
+        "description": "No body. Temporal workflow ID is the commission UUID; reject-duplicate reuse makes repeated starts safe.",
+        "responses": {
+          "202": {
+            "description": "Execution started or already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workflow_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "commission_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "workflow_id",
+                    "commission_id"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/commissions/{id}/publications": {
+      "post": {
+        "operationId": "publishRecord",
+        "summary": "Publish the workflow record",
+        "description": "Makes the redacted record readable at /api/v1/public/records/{publication_id}. Repeatable.",
+        "responses": {
+          "201": {
+            "description": "Publication created or already existing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "publication_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "commission_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "public_url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "publication_id",
+                    "commission_id",
+                    "public_url"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}": {
+      "get": {
+        "operationId": "workflowState",
+        "summary": "Query authoritative Temporal state",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Current snapshot; DRAFT if execution does not yet exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/record": {
+      "get": {
+        "operationId": "workflowRecord",
+        "summary": "Read the aggregate workflow record",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Authoritative state plus the append-only record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/runs": {
+      "get": {
+        "operationId": "workflowRuns",
+        "summary": "List runs",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Runs by attempt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Run"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/approvals": {
+      "get": {
+        "operationId": "workflowApprovals",
+        "summary": "List approval requests with status",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Requests by round with derived status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApprovalView"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/decisions": {
+      "get": {
+        "operationId": "workflowDecisions",
+        "summary": "List accepted decisions",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Decisions in acceptance order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Decision"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      },
+      "post": {
+        "operationId": "humanDecision",
+        "summary": "Approve, revise or reject the exact revision under review",
+        "description": "approval_id and revision_id must equal the pending approval request. Anything else is 409 STALE_APPROVAL with the pending request in the body. APPROVE requires can_approve. One accepted decision per approval request.",
+        "responses": {
+          "202": {
+            "description": "Signal delivered, or an identical accepted signal is awaiting decision persistence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "decision_id": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "approval_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "revision_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "signal_sent",
+                        "signal_received"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "decision_id",
+                    "approval_id",
+                    "revision_id",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Identical decision already recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "decision_id": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "accepted"
+                    }
+                  },
+                  "required": [
+                    "decision_id",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED; request is non-retryable until corrected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict; STALE_APPROVAL responses carry pending_approval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StaleApprovalError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "PAYLOAD_TOO_LARGE; public JSON request limit 32 KiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "UNSUPPORTED_MEDIA_TYPE; JSON endpoints require Content-Type:application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionInput"
+              }
+            }
+          }
+        },
+        "x-max-request-bytes": 32768
+      }
+    },
+    "/api/v1/workflows/{id}/timeline": {
+      "get": {
+        "operationId": "workflowTimeline",
+        "summary": "Read append-only events",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Ascending sequence, at most 250 events. Continue after the last sequence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      },
+                      "maxItems": 250
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED; request is non-retryable until corrected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/events": {
+      "get": {
+        "operationId": "workflowEvents",
+        "summary": "Stream state snapshots via SSE",
+        "description": "NATS hints trigger a fresh Temporal query; 3-second polling recovers dropped or duplicate hints; a hash suppresses repeats. Closes after 2 minutes.",
+        "responses": {
+          "200": {
+            "description": "SSE state/unavailable events and heartbeat comments.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "STREAM_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ],
+        "x-sse-events": {
+          "state": {
+            "$ref": "#/components/schemas/WorkflowState"
+          },
+          "unavailable": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "WORKFLOW_QUERY_UNAVAILABLE"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/cancel": {
+      "post": {
+        "operationId": "cancelWorkflow",
+        "summary": "Request durable workflow cancellation",
+        "description": "Asynchronous; the workflow ends in the explicit CANCELLED stage. Evidence and artifacts are never deleted.",
+        "responses": {
+          "202": {
+            "description": "Cancellation requested.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "cancellation_requested"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/artifacts/{id}": {
+      "get": {
+        "operationId": "getArtifact",
+        "summary": "Download the private final JSON artifact",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Owner-authorized, hash-verified bytes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalArtifact"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted SHA-256 digest."
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Artifact UUID. Ownership is enforced through the commission."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    },
+    "/api/v1/provenance/{id}": {
+      "get": {
+        "operationId": "getProvenance",
+        "summary": "Inspect the full lineage of an owned commission",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Runs, steps, revisions, approvals, decisions, artifacts and provenance rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lineage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED; missing, invalid or expired configured bearer/OIDC credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND; invalid identifier, absent resource or resource owned by another subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED; per-subject (or per public client address) burst 120, refill 2 requests/second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Current implementation returns 1 second.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DEPENDENCY_UNAVAILABLE, TEMPORAL_UNAVAILABLE, WORKFLOW_QUERY_UNAVAILABLE or ARTIFACT_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Commission UUID, identical to the workflow ID. Ownership is enforced server-side."
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional W3C trace context."
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "UserBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Local opaque credential mapped to a subject, or a configured OIDC JWT verified for issuer, audience, signature and expiry."
+      }
+    },
+    "schemas": {
+      "Invocation": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Model"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt"
+          },
+          "repair": {
+            "type": "boolean",
+            "title": "Repair"
+          },
+          "outcome": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Outcome"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "attempt",
+          "repair",
+          "outcome",
+          "latency_ms",
+          "live"
+        ],
+        "title": "Invocation"
+      },
+      "Provenance": {
+        "properties": {
+          "prompt_id": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Prompt Id"
+          },
+          "prompt_version": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Prompt Version"
+          },
+          "prompt_hash": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Prompt Hash"
+          },
+          "schema_version": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Schema Version"
+          },
+          "provider": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Model"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt_id",
+          "prompt_version",
+          "prompt_hash",
+          "schema_version",
+          "provider",
+          "model",
+          "live",
+          "latency_ms"
+        ],
+        "title": "Provenance"
+      },
+      "ToolCall": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Id"
+          },
+          "tool": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Tool"
+          },
+          "arguments_hash": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Arguments Hash"
+          },
+          "timestamp": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Timestamp"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "blocked",
+              "failed"
+            ],
+            "title": "Outcome"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "tool",
+          "arguments_hash",
+          "timestamp",
+          "outcome",
+          "latency_ms",
+          "source_ids"
+        ],
+        "title": "ToolCall"
+      },
+      "BriefAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "objective": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "audience": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "ambiguities": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Ambiguities",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "hard_constraints": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Hard Constraints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "objective",
+          "audience",
+          "ambiguities",
+          "conflicts",
+          "hard_constraints"
+        ],
+        "title": "BriefAnalysis",
+        "type": "object"
+      },
+      "CreativeDirection": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "objective": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "audience": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "visual_principles": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Visual Principles",
+            "type": "array"
+          },
+          "colors": {
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Colors",
+            "type": "array"
+          },
+          "typography": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Typography",
+            "type": "string"
+          },
+          "motion": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Motion",
+            "type": "string"
+          },
+          "imagery": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Imagery",
+            "type": "string"
+          },
+          "composition": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Composition",
+            "type": "array"
+          },
+          "prohibitions": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Prohibitions",
+            "type": "array"
+          },
+          "references": {
+            "items": {
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "References",
+            "type": "array"
+          },
+          "uncertainties": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Uncertainties",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "objective",
+          "audience",
+          "visual_principles",
+          "colors",
+          "typography",
+          "motion",
+          "imagery",
+          "composition",
+          "prohibitions",
+          "references",
+          "uncertainties"
+        ],
+        "title": "CreativeDirection",
+        "type": "object"
+      },
+      "Critique": {
+        "additionalProperties": false,
+        "properties": {
+          "score": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Score",
+            "type": "number"
+          },
+          "requires_revision": {
+            "title": "Requires Revision",
+            "type": "boolean"
+          },
+          "issues": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Issues",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "hard_constraints_pass": {
+            "title": "Hard Constraints Pass",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "score",
+          "requires_revision",
+          "issues",
+          "summary",
+          "hard_constraints_pass"
+        ],
+        "title": "Critique",
+        "type": "object"
+      },
+      "Source": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "excerpt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Excerpt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "url",
+          "excerpt"
+        ],
+        "title": "Source",
+        "type": "object"
+      },
+      "Research": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Findings",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "maxItems": 10,
+            "title": "Sources",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Limitations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "findings",
+          "sources",
+          "limitations"
+        ],
+        "title": "Research",
+        "type": "object"
+      },
+      "Specialty": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Direction",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Rules",
+            "type": "array"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "rules",
+          "rationale"
+        ],
+        "title": "Specialty",
+        "type": "object"
+      },
+      "Strategy": {
+        "additionalProperties": false,
+        "properties": {
+          "positioning": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Positioning",
+            "type": "string"
+          },
+          "audience": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "principles": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Principles",
+            "type": "array"
+          },
+          "source_ids": {
+            "items": {
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Source Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "positioning",
+          "audience",
+          "principles",
+          "source_ids"
+        ],
+        "title": "Strategy",
+        "type": "object"
+      },
+      "Memory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "approved": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "value"
+        ],
+        "additionalProperties": false,
+        "description": "User-declared advisory brand memory with provenance; approved is not a VELIN decision or entitlement."
+      },
+      "Brief": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "x-max-utf8-bytes": 160,
+            "minLength": 3,
+            "maxLength": 160
+          },
+          "objective": {
+            "type": "string",
+            "x-max-utf8-bytes": 2000,
+            "minLength": 15,
+            "maxLength": 2000
+          },
+          "audience": {
+            "type": "string",
+            "x-max-utf8-bytes": 300,
+            "minLength": 3,
+            "maxLength": 300
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "maxItems": 20,
+            "default": []
+          },
+          "prohibited": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "maxItems": 20,
+            "default": []
+          },
+          "brand_memory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Memory"
+            },
+            "maxItems": 20,
+            "default": []
+          }
+        },
+        "required": [
+          "title",
+          "objective",
+          "audience",
+          "constraints",
+          "prohibited",
+          "brand_memory"
+        ],
+        "additionalProperties": false,
+        "description": "Immutable submitted brief. Combined serialized brief/advisory memory<=16 KiB. Upper text limits count UTF-8 bytes.",
+        "x-max-json-utf8-bytes": 16384
+      },
+      "BriefInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "x-max-utf8-bytes": 160,
+            "minLength": 3,
+            "maxLength": 160
+          },
+          "objective": {
+            "type": "string",
+            "x-max-utf8-bytes": 2000,
+            "minLength": 15,
+            "maxLength": 2000
+          },
+          "audience": {
+            "type": "string",
+            "x-max-utf8-bytes": 300,
+            "minLength": 3,
+            "maxLength": 300
+          },
+          "constraints": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "maxItems": 20,
+            "default": []
+          },
+          "prohibited": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "maxItems": 20,
+            "default": []
+          },
+          "brand_memory": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Memory"
+            },
+            "maxItems": 20,
+            "default": []
+          }
+        },
+        "required": [
+          "title",
+          "objective",
+          "audience"
+        ],
+        "additionalProperties": false,
+        "description": "Omitted/null lists normalize to []. Unknown fields rejected. Serialized aggregate<=16 KiB.",
+        "x-max-json-utf8-bytes": 16384
+      },
+      "Commission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "brief",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "CommissionDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "brief",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "temporal_run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "commission_id",
+          "temporal_run_id",
+          "attempt",
+          "started_at"
+        ],
+        "additionalProperties": false,
+        "description": "One Temporal execution. A resume after a worker restart stays inside the run; a later execution is a new attempt."
+      },
+      "RevisionRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "direction_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "direction_hash"
+        ],
+        "additionalProperties": false,
+        "description": "Content-bound revision identity: derived from commission, number and the direction hash."
+      },
+      "ApprovalRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "round": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "commission_id",
+          "revision_id",
+          "round",
+          "requested_at",
+          "deadline_at"
+        ],
+        "additionalProperties": false,
+        "description": "The durable request for a named person to judge one exact revision."
+      },
+      "ApprovalView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "round": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decided",
+              "expired",
+              "cancelled",
+              "failed",
+              "rejected"
+            ]
+          },
+          "decision_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "action": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "commission_id",
+          "revision_id",
+          "round",
+          "requested_at",
+          "deadline_at",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "DecisionInput": {
+        "type": "object",
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{8,128}$",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "approval_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "REVISE",
+              "REJECT"
+            ]
+          },
+          "reason_code": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80
+          },
+          "reason": {
+            "type": "string",
+            "default": "",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "decision_id",
+          "approval_id",
+          "revision_id",
+          "action",
+          "reason_code"
+        ],
+        "additionalProperties": false,
+        "description": "actor_id may not be submitted; the actor is the authenticated owner. approval_id and revision_id must name the pending approval request exactly; anything else is STALE_APPROVAL. REVISE and REJECT require a reason."
+      },
+      "Decision": {
+        "type": "object",
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{8,128}$",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "approval_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "REVISE",
+              "REJECT"
+            ]
+          },
+          "reason_code": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80
+          },
+          "reason": {
+            "type": "string",
+            "default": "",
+            "maxLength": 2000
+          },
+          "actor_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "decision_id",
+          "approval_id",
+          "revision_id",
+          "action",
+          "reason_code",
+          "reason",
+          "actor_id",
+          "commission_id",
+          "decided_at"
+        ],
+        "additionalProperties": false
+      },
+      "Evaluation": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "passed",
+          "mandatory"
+        ],
+        "additionalProperties": false
+      },
+      "StepResult": {
+        "type": "object",
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "research",
+              "strategy",
+              "art_direction",
+              "typography",
+              "motion",
+              "imagery",
+              "critique",
+              "revision"
+            ]
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefAnalysis"
+              },
+              {
+                "$ref": "#/components/schemas/CreativeDirection"
+              },
+              {
+                "$ref": "#/components/schemas/Critique"
+              },
+              {
+                "$ref": "#/components/schemas/Research"
+              },
+              {
+                "$ref": "#/components/schemas/Specialty"
+              },
+              {
+                "$ref": "#/components/schemas/Strategy"
+              }
+            ],
+            "description": "Strict capability-specific output; see x-capability-output-schemas.",
+            "x-capability-output-schemas": {
+              "brief": "BriefAnalysis",
+              "research": "Research",
+              "strategy": "Strategy",
+              "art_direction": "CreativeDirection",
+              "typography": "Specialty",
+              "motion": "Specialty",
+              "imagery": "Specialty",
+              "critique": "Critique",
+              "revision": "CreativeDirection"
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            }
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evaluation"
+            }
+          },
+          "invocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invocation"
+            }
+          }
+        },
+        "required": [
+          "step_id",
+          "capability",
+          "output",
+          "provenance",
+          "tool_calls",
+          "evaluations",
+          "invocations"
+        ],
+        "additionalProperties": false
+      },
+      "StepRecord": {
+        "type": "object",
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "research",
+              "strategy",
+              "art_direction",
+              "typography",
+              "motion",
+              "imagery",
+              "critique",
+              "revision"
+            ]
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefAnalysis"
+              },
+              {
+                "$ref": "#/components/schemas/CreativeDirection"
+              },
+              {
+                "$ref": "#/components/schemas/Critique"
+              },
+              {
+                "$ref": "#/components/schemas/Research"
+              },
+              {
+                "$ref": "#/components/schemas/Specialty"
+              },
+              {
+                "$ref": "#/components/schemas/Strategy"
+              }
+            ],
+            "description": "Strict capability-specific output; see x-capability-output-schemas.",
+            "x-capability-output-schemas": {
+              "brief": "BriefAnalysis",
+              "research": "Research",
+              "strategy": "Strategy",
+              "art_direction": "CreativeDirection",
+              "typography": "Specialty",
+              "motion": "Specialty",
+              "imagery": "Specialty",
+              "critique": "Critique",
+              "revision": "CreativeDirection"
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            }
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evaluation"
+            }
+          },
+          "invocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invocation"
+            }
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_number": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "step_id",
+          "capability",
+          "output",
+          "provenance",
+          "tool_calls",
+          "evaluations",
+          "invocations",
+          "commission_id",
+          "run_id",
+          "revision_number",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "StepSummary": {
+        "type": "object",
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "capability": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision_number": {
+            "type": "integer"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "live": {
+            "type": "boolean"
+          },
+          "prompt_id": {
+            "type": "string"
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "evaluations_passed": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "step_id",
+          "run_id",
+          "capability",
+          "revision_number",
+          "provider",
+          "model",
+          "live",
+          "prompt_id",
+          "prompt_version",
+          "evaluations_passed",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Revision": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer"
+          },
+          "parent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "direction_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "direction": {
+            "$ref": "#/components/schemas/CreativeDirection"
+          },
+          "critique": {
+            "$ref": "#/components/schemas/Critique"
+          },
+          "produced_by": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "commission_id",
+          "number",
+          "direction_hash",
+          "direction",
+          "critique",
+          "produced_by",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "RevisionSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer"
+          },
+          "parent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "direction_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string"
+          },
+          "produced_by": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "requires_revision": {
+            "type": "boolean"
+          },
+          "hard_constraints_pass": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "direction_hash",
+          "title",
+          "produced_by",
+          "requires_revision",
+          "hard_constraints_pass",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Artifact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "decision_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "commission_id",
+          "revision_id",
+          "decision_id",
+          "sha256",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "ProvenanceInputs": {
+        "type": "object",
+        "properties": {
+          "step_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "source_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "prompt_id": {
+            "type": "string"
+          },
+          "prompt_hash": {
+            "type": "string"
+          },
+          "brief_hash": {
+            "type": "string"
+          },
+          "revision_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_ids",
+          "source_ids",
+          "brief_hash"
+        ],
+        "additionalProperties": false
+      },
+      "ProvenanceRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "revision_id": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/ProvenanceInputs"
+          },
+          "output_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "approval_id": {
+            "type": "string"
+          },
+          "decision_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "commission_id",
+          "run_id",
+          "capability",
+          "inputs",
+          "output_ref",
+          "sha256",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "description": "Lineage of one produced object: workflow, run, step, revision, producing capability, inputs, output reference, checksum and approval/decision linkage."
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "commission",
+              "run",
+              "step",
+              "failure",
+              "recovery",
+              "revision",
+              "approval",
+              "decision",
+              "artifact",
+              "workflow"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "detail": {
+            "description": "Event-specific sanitized evidence."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "sequence",
+          "id",
+          "commission_id",
+          "type",
+          "kind",
+          "subject",
+          "detail",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowState": {
+        "type": "object",
+        "properties": {
+          "commission_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "BRIEF_ANALYSIS",
+              "RESEARCH",
+              "STRATEGY",
+              "DIRECTION",
+              "TYPOGRAPHY",
+              "MOTION",
+              "IMAGERY",
+              "CRITIQUE",
+              "REVISION",
+              "WAITING_FOR_APPROVAL",
+              "APPROVED",
+              "PRODUCTION",
+              "COMPLETED",
+              "REJECTED",
+              "EXPIRED",
+              "CANCELLED",
+              "FAILED"
+            ]
+          },
+          "movement": {
+            "type": "string",
+            "enum": [
+              "BRIEF",
+              "EXECUTE",
+              "REVIEW",
+              "APPROVE",
+              "CONTINUE",
+              "DONE"
+            ]
+          },
+          "terminal": {
+            "type": "boolean"
+          },
+          "revision_number": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "review_round": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RevisionRef"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/CreativeDirection"
+          },
+          "critique": {
+            "$ref": "#/components/schemas/Critique"
+          },
+          "pending_approval": {
+            "$ref": "#/components/schemas/ApprovalRequest"
+          },
+          "can_approve": {
+            "type": "boolean"
+          },
+          "decision_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "artifact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "steps_completed": {
+            "type": "integer"
+          },
+          "stale_decisions": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "commission_id",
+          "version",
+          "stage",
+          "movement",
+          "terminal",
+          "revision_number",
+          "review_round",
+          "can_approve",
+          "steps_completed",
+          "stale_decisions"
+        ],
+        "additionalProperties": false,
+        "description": "Temporal query snapshot, or immutable terminal evidence after history retention. DRAFT is returned only before an execution starts. pending_approval names the exact revision a decision must cite."
+      },
+      "PublicCommission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "audience": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "objective",
+          "audience",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowRecord": {
+        "type": "object",
+        "properties": {
+          "commission": {
+            "$ref": "#/components/schemas/PublicCommission"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/WorkflowState"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepSummary"
+            }
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionSummary"
+            }
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalView"
+            }
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            }
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProvenanceRecord"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          },
+          "public": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "commission",
+          "workflow",
+          "runs",
+          "steps",
+          "revisions",
+          "approvals",
+          "decisions",
+          "artifacts",
+          "provenance",
+          "events",
+          "public",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "Aggregate read model: authoritative Temporal state plus the append-only PostgreSQL record. Public records omit the owner and the direction body."
+      },
+      "Lineage": {
+        "type": "object",
+        "properties": {
+          "commission": {
+            "$ref": "#/components/schemas/Commission"
+          },
+          "brief_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepRecord"
+            }
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Revision"
+            }
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRequest"
+            }
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            }
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProvenanceRecord"
+            }
+          },
+          "chain_of_thought_stored": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": [
+          "commission",
+          "brief_hash",
+          "runs",
+          "steps",
+          "revisions",
+          "approvals",
+          "decisions",
+          "artifacts",
+          "provenance",
+          "chain_of_thought_stored"
+        ],
+        "additionalProperties": false
+      },
+      "FinalArtifact": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "const": "2",
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commission": {
+            "$ref": "#/components/schemas/Commission"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/CreativeDirection"
+          },
+          "approval": {
+            "$ref": "#/components/schemas/ApprovalRequest"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepResult"
+            }
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            }
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "workflow_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "run_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "brief_hash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "step_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "revision_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "approval_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "decision_id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "policy": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "workflow_id",
+              "run_id",
+              "brief_hash",
+              "step_ids",
+              "revision_id",
+              "approval_id",
+              "decision_id",
+              "policy"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "schema_version",
+          "id",
+          "commission",
+          "revision",
+          "direction",
+          "approval",
+          "decision",
+          "steps",
+          "decisions",
+          "provenance"
+        ],
+        "additionalProperties": false,
+        "description": "Private content-addressed JSON artifact bound to the approved revision and the approving decision."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "traceId": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "traceId"
+        ],
+        "additionalProperties": false
+      },
+      "StaleApprovalError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "const": "STALE_APPROVAL",
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "traceId": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32
+          },
+          "pending_approval": {
+            "$ref": "#/components/schemas/ApprovalRequest"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "traceId",
+          "pending_approval"
+        ],
+        "additionalProperties": false,
+        "description": "The decision named a different approval or revision; the pending request is returned so the client can refresh."
+      },
+      "Readiness": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "postgresql": {
+            "type": "boolean"
+          },
+          "temporal": {
+            "type": "boolean"
+          },
+          "nats_optional": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready",
+          "postgresql",
+          "temporal",
+          "nats_optional"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "externalDocs": {
+    "description": "Private capability service contract",
+    "url": "./capabilities-openapi.json"
+  }
+}

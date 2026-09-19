@@ -1,0 +1,1328 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "VELIN capability service",
+    "version": "1.0.0",
+    "description": "Private stateless capability service. Only control-plane activities call this API. No database credentials, durable state mutation, approval, arbitrary network tools or browser CORS. Successful output is a proposal plus checks; failed mandatory checks may be returned with 200 and must block production in the control plane. live:false is a fixture."
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "summary": "Live",
+        "operationId": "live_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Process is alive or initialized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Ready",
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Process is alive or initialized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Initialization incomplete.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "not_ready",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Metrics",
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Authenticated Prometheus exposition.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Service authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities/run": {
+      "post": {
+        "summary": "Run",
+        "operationId": "run_v1_capabilities_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapabilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid schema/prompt/tool request, permanent provider failure, or exhausted structured repair.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/invalid internal bearer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fault injection disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Capability concurrency limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Provider/tool unavailable, circuit open, or capability deadline exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Sanitized internal fault.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityError"
+                }
+              }
+            }
+          }
+        },
+        "description": "128 KiB request limit; 16 concurrent calls; 45 s overall deadline. Up to 2 attempts per approved provider, 10 s HTTP timeout, one schema repair. Tools are allowlisted and read-only. The same step_id may execute again after a crash: durable deduplication is the control plane's responsibility. Failures carry only safe attempt evidence, never accepted output.",
+        "x-max-request-bytes": 131072,
+        "parameters": [
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "W3C trace context."
+          },
+          {
+            "name": "X-Velin-Test-Fault",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "malformed_once",
+                "malformed_always",
+                "primary_timeout",
+                "primary_failure",
+                "force_revision",
+                "tool_failure",
+                "unauthorized_tool",
+                "slow_activity",
+                "prompt_injection",
+                "regressed"
+              ]
+            },
+            "description": "Local fault injection only when VELIN_TEST_MODE=1; forbidden otherwise. Test mode cannot start in APP_ENV=production."
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Brief": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "objective": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 15,
+            "title": "Objective"
+          },
+          "audience": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Audience"
+          },
+          "constraints": {
+            "items": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Constraints"
+          },
+          "prohibited": {
+            "items": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Prohibited"
+          },
+          "brand_memory": {
+            "items": {
+              "$ref": "#/components/schemas/Memory"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Brand Memory"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "objective",
+          "audience"
+        ],
+        "title": "Brief"
+      },
+      "CapabilityRequest": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Step Id"
+          },
+          "commission_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Commission Id"
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "research",
+              "strategy",
+              "art_direction",
+              "typography",
+              "motion",
+              "imagery",
+              "critique",
+              "revision"
+            ],
+            "title": "Capability"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "brief": {
+                "$ref": "#/components/schemas/BriefAnalysis"
+              },
+              "research": {
+                "$ref": "#/components/schemas/Research"
+              },
+              "strategy": {
+                "$ref": "#/components/schemas/Strategy"
+              },
+              "art_direction": {
+                "$ref": "#/components/schemas/CreativeDirection"
+              },
+              "typography": {
+                "$ref": "#/components/schemas/Specialty"
+              },
+              "motion": {
+                "$ref": "#/components/schemas/Specialty"
+              },
+              "imagery": {
+                "$ref": "#/components/schemas/Specialty"
+              },
+              "critique": {
+                "$ref": "#/components/schemas/Critique"
+              },
+              "revision": {
+                "$ref": "#/components/schemas/CreativeDirection"
+              },
+              "human_decision": {
+                "$ref": "#/components/schemas/HumanDecision"
+              },
+              "review_round": {
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "description": "Only relevant prior results; serialized UTF-8 limit 64 KiB.",
+            "x-max-json-utf8-bytes": 65536
+          },
+          "revision": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step_id",
+          "commission_id",
+          "capability",
+          "brief"
+        ],
+        "title": "CapabilityRequest"
+      },
+      "CapabilityResponse": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Step Id"
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "research",
+              "strategy",
+              "art_direction",
+              "typography",
+              "motion",
+              "imagery",
+              "critique",
+              "revision"
+            ],
+            "title": "Capability"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefAnalysis"
+              },
+              {
+                "$ref": "#/components/schemas/CreativeDirection"
+              },
+              {
+                "$ref": "#/components/schemas/Critique"
+              },
+              {
+                "$ref": "#/components/schemas/Research"
+              },
+              {
+                "$ref": "#/components/schemas/Specialty"
+              },
+              {
+                "$ref": "#/components/schemas/Strategy"
+              }
+            ],
+            "description": "Strict capability-specific output; see x-capability-output-schemas.",
+            "x-capability-output-schemas": {
+              "brief": "BriefAnalysis",
+              "research": "Research",
+              "strategy": "Strategy",
+              "art_direction": "CreativeDirection",
+              "typography": "Specialty",
+              "motion": "Specialty",
+              "imagery": "Specialty",
+              "critique": "Critique",
+              "revision": "CreativeDirection"
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/Evaluation"
+            },
+            "type": "array",
+            "title": "Evaluations"
+          },
+          "invocations": {
+            "items": {
+              "$ref": "#/components/schemas/Invocation"
+            },
+            "type": "array",
+            "title": "Invocations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step_id",
+          "capability",
+          "output",
+          "provenance",
+          "tool_calls",
+          "evaluations",
+          "invocations"
+        ],
+        "title": "CapabilityResponse"
+      },
+      "Evaluation": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "const": "deterministic",
+            "title": "Kind",
+            "default": "deterministic"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "mandatory": {
+            "type": "boolean",
+            "title": "Mandatory",
+            "default": true
+          },
+          "score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Detail"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "passed",
+          "score",
+          "detail"
+        ],
+        "title": "Evaluation"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Invocation": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Model"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt"
+          },
+          "repair": {
+            "type": "boolean",
+            "title": "Repair"
+          },
+          "outcome": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Outcome"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "attempt",
+          "repair",
+          "outcome",
+          "latency_ms",
+          "live"
+        ],
+        "title": "Invocation"
+      },
+      "Memory": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Source"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "value",
+          "approved"
+        ],
+        "title": "Memory"
+      },
+      "Provenance": {
+        "properties": {
+          "prompt_id": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Prompt Id"
+          },
+          "prompt_version": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Prompt Version"
+          },
+          "prompt_hash": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Prompt Hash"
+          },
+          "schema_version": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Schema Version"
+          },
+          "provider": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Model"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt_id",
+          "prompt_version",
+          "prompt_hash",
+          "schema_version",
+          "provider",
+          "model",
+          "live",
+          "latency_ms"
+        ],
+        "title": "Provenance"
+      },
+      "ToolCall": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Id"
+          },
+          "tool": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Tool"
+          },
+          "arguments_hash": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Arguments Hash"
+          },
+          "timestamp": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Timestamp"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "blocked",
+              "failed"
+            ],
+            "title": "Outcome"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "tool",
+          "arguments_hash",
+          "timestamp",
+          "outcome",
+          "latency_ms",
+          "source_ids"
+        ],
+        "title": "ToolCall"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "BriefAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "objective": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "audience": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "ambiguities": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Ambiguities",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "hard_constraints": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Hard Constraints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "objective",
+          "audience",
+          "ambiguities",
+          "conflicts",
+          "hard_constraints"
+        ],
+        "title": "BriefAnalysis",
+        "type": "object"
+      },
+      "CreativeDirection": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "objective": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "audience": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "visual_principles": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Visual Principles",
+            "type": "array"
+          },
+          "colors": {
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Colors",
+            "type": "array"
+          },
+          "typography": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Typography",
+            "type": "string"
+          },
+          "motion": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Motion",
+            "type": "string"
+          },
+          "imagery": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Imagery",
+            "type": "string"
+          },
+          "composition": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Composition",
+            "type": "array"
+          },
+          "prohibitions": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Prohibitions",
+            "type": "array"
+          },
+          "references": {
+            "items": {
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "References",
+            "type": "array"
+          },
+          "uncertainties": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Uncertainties",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "objective",
+          "audience",
+          "visual_principles",
+          "colors",
+          "typography",
+          "motion",
+          "imagery",
+          "composition",
+          "prohibitions",
+          "references",
+          "uncertainties"
+        ],
+        "title": "CreativeDirection",
+        "type": "object"
+      },
+      "Critique": {
+        "additionalProperties": false,
+        "properties": {
+          "score": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Score",
+            "type": "number"
+          },
+          "requires_revision": {
+            "title": "Requires Revision",
+            "type": "boolean"
+          },
+          "issues": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Issues",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "hard_constraints_pass": {
+            "title": "Hard Constraints Pass",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "score",
+          "requires_revision",
+          "issues",
+          "summary",
+          "hard_constraints_pass"
+        ],
+        "title": "Critique",
+        "type": "object"
+      },
+      "HumanDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision_id": {
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "approval_id": {
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "revision_id": {
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "APPROVE",
+              "REVISE",
+              "REJECT"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "reason_code": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Actor Id"
+          }
+        },
+        "required": [
+          "decision_id",
+          "approval_id",
+          "revision_id",
+          "action",
+          "reason_code",
+          "reason"
+        ],
+        "title": "HumanDecision",
+        "type": "object"
+      },
+      "Source": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "excerpt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Excerpt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "url",
+          "excerpt"
+        ],
+        "title": "Source",
+        "type": "object"
+      },
+      "Research": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Findings",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "maxItems": 10,
+            "title": "Sources",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Limitations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "findings",
+          "sources",
+          "limitations"
+        ],
+        "title": "Research",
+        "type": "object"
+      },
+      "Specialty": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Direction",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Rules",
+            "type": "array"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "rules",
+          "rationale"
+        ],
+        "title": "Specialty",
+        "type": "object"
+      },
+      "Strategy": {
+        "additionalProperties": false,
+        "properties": {
+          "positioning": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Positioning",
+            "type": "string"
+          },
+          "audience": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "principles": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Principles",
+            "type": "array"
+          },
+          "source_ids": {
+            "items": {
+              "pattern": "^[a-zA-Z0-9_.:-]{1,128}$",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Source Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "positioning",
+          "audience",
+          "principles",
+          "source_ids"
+        ],
+        "title": "Strategy",
+        "type": "object"
+      },
+      "CapabilityError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "traceId": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            },
+            "maxItems": 16
+          },
+          "invocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invocation"
+            },
+            "maxItems": 8
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "traceId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "ServiceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "CAPABILITIES_TOKEN, minimum 32 characters. Never send this token to a browser or commit it."
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:18000",
+      "description": "Local Docker host mapping"
+    },
+    {
+      "url": "http://capabilities:8000",
+      "description": "Private Compose network"
+    }
+  ],
+  "security": [
+    {
+      "ServiceBearer": []
+    }
+  ]
+}

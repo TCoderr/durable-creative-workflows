@@ -1,0 +1,19 @@
+# Deliberately a template: no remote repository exists and no sync is authorized.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velin-${ENVIRONMENT}
+  namespace: argocd
+spec:
+  project: velin
+  source:
+    repoURL: ${APPROVED_GITOPS_REPOSITORY}
+    targetRevision: ${REVIEWED_COMMIT_SHA}
+    path: infra/kubernetes/overlays/${ENVIRONMENT}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velin-${ENVIRONMENT}
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true

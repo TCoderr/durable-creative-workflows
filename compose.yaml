@@ -1,0 +1,255 @@
+name: velin
+
+# Host ports bind loopback and default to the documented values; override any
+# VELIN_PORT_* in .local/stack.env when a port is taken on the machine.
+
+x-control-env: &control-env
+  APP_ENV: development
+  APP_VERSION: ${APP_VERSION:-local}
+  DATABASE_URL: postgresql://velin:${POSTGRES_PASSWORD:?Generate .local/stack.env}@postgres:5432/velin?sslmode=disable
+  TEMPORAL_ADDRESS: temporal:7233
+  TEMPORAL_NAMESPACE: default
+  TEMPORAL_TASK_QUEUE: velin-commissions
+  NATS_URL: nats://${NATS_TOKEN:?Generate .local/stack.env}@nats:4222
+  CAPABILITIES_URL: http://capabilities:8000
+  CAPABILITIES_TOKEN: ${CAPABILITIES_TOKEN:?Generate .local/stack.env}
+  VELIN_API_KEYS: ${VELIN_API_KEYS:?Generate .local/stack.env}
+  REVIEW_TIMEOUT: ${REVIEW_TIMEOUT:-168h}
+  ARTIFACT_ROOT: /artifacts
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318
+
+services:
+  postgres:
+    image: velin-postgres:17-security.1
+    build:
+      context: .
+      dockerfile: infra/docker/postgres.Dockerfile
+    environment:
+      POSTGRES_USER: velin
+      POSTGRES_DB: velin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate .local/stack.env}
+    ports: ["127.0.0.1:${VELIN_PORT_POSTGRES:-5432}:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U velin -d velin"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    shm_size: 128mb
+    restart: unless-stopped
+
+  temporal:
+    image: velin-temporal:1.8.3-security.1
+    build:
+      context: .
+      dockerfile: infra/docker/temporal.Dockerfile
+    command: [server, start-dev, --ip, 0.0.0.0, --db-filename, /data/temporal.db]
+    ports: ["127.0.0.1:${VELIN_PORT_TEMPORAL:-7233}:7233", "127.0.0.1:${VELIN_PORT_TEMPORAL_UI:-8233}:8233"]
+    volumes: [temporal-data:/data]
+    depends_on:
+      temporal-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, temporal, operator, cluster, health, --address, 127.0.0.1:7233]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  nats:
+    image: velin-nats:2.14.6-security.1
+    build:
+      context: .
+      dockerfile: infra/docker/nats.Dockerfile
+    command: [--name, velin-local, --http_port, "8222", --auth, "${NATS_TOKEN:?Generate .local/stack.env}"]
+    ports: ["127.0.0.1:${VELIN_PORT_NATS:-4222}:4222", "127.0.0.1:${VELIN_PORT_NATS_MONITOR:-8222}:8222"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8222/healthz]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  artifact-init:
+    image: alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
+    command: [chown, "65532:65532", /artifacts]
+    volumes: [artifact-data:/artifacts]
+    restart: "no"
+
+  temporal-init:
+    image: alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
+    command: [chown, "1000:1000", /data]
+    volumes: [temporal-data:/data]
+    restart: "no"
+
+  migrate:
+    image: velin-control:${APP_VERSION:-local}
+    build:
+      context: .
+      dockerfile: infra/docker/control.Dockerfile
+    command: [migrate]
+    environment: *control-env
+    depends_on:
+      postgres: {condition: service_healthy}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+
+  capabilities:
+    image: velin-capabilities:${APP_VERSION:-local}
+    build:
+      context: .
+      dockerfile: infra/docker/capabilities.Dockerfile
+    environment:
+      APP_ENV: development
+      APP_VERSION: ${APP_VERSION:-local}
+      CAPABILITIES_TOKEN: ${CAPABILITIES_TOKEN:?Generate .local/stack.env}
+      VELIN_PROVIDER: deterministic
+      VELIN_TEST_MODE: "1"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318
+    ports: ["127.0.0.1:${VELIN_PORT_CAPABILITIES:-18000}:8000"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+  api:
+    image: velin-control:${APP_VERSION:-local}
+    build:
+      context: .
+      dockerfile: infra/docker/control.Dockerfile
+    command: [api]
+    environment:
+      <<: *control-env
+      HTTP_ADDR: :8080
+    ports: ["127.0.0.1:${VELIN_PORT_API:-8080}:8080"]
+    volumes: [artifact-data:/artifacts]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      artifact-init: {condition: service_completed_successfully}
+      temporal: {condition: service_healthy}
+      nats: {condition: service_healthy}
+      capabilities: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  worker:
+    image: velin-control:${APP_VERSION:-local}
+    command: [worker]
+    environment:
+      <<: *control-env
+      WORKER_HTTP_ADDR: :8081
+    ports: ["127.0.0.1:${VELIN_PORT_WORKER:-8081}:8081"]
+    healthcheck:
+      test: [CMD, /app/velin, health, http://127.0.0.1:8081/health/ready]
+      interval: 10s
+      timeout: 4s
+      start_period: 20s
+    volumes: [artifact-data:/artifacts]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      artifact-init: {condition: service_completed_successfully}
+      temporal: {condition: service_healthy}
+      capabilities: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  frontend:
+    image: velin-frontend:${APP_VERSION:-local}
+    build:
+      context: .
+      dockerfile: infra/docker/frontend.Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4173"
+      API_UPSTREAM: http://api:8080
+    ports: ["127.0.0.1:${VELIN_PORT_FRONTEND:-4173}:4173"]
+    depends_on: [api]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  otel:
+    image: otel/opentelemetry-collector:0.160.0
+    command: [--config=/etc/otel/config.yaml]
+    volumes: [./infra/observability/collector.yaml:/etc/otel/config.yaml:ro]
+    ports: ["127.0.0.1:${VELIN_PORT_OTLP:-4318}:4318"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    restart: unless-stopped
+
+  prometheus:
+    image: velin-prometheus:3.14.0-security.1
+    build:
+      context: .
+      dockerfile: infra/docker/prometheus.Dockerfile
+    command: [--config.file=/etc/prometheus/prometheus.yaml, --storage.tsdb.retention.time=24h]
+    volumes: [./infra/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro, prometheus-data:/prometheus]
+    secrets: [capabilities-token]
+    ports: ["127.0.0.1:${VELIN_PORT_PROMETHEUS:-9090}:9090"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, /bin/wget, -q, -O, /dev/null, http://127.0.0.1:9090/-/ready]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+    restart: unless-stopped
+
+  grafana:
+    image: velin-grafana:13.2.2-security.1
+    build:
+      context: .
+      dockerfile: infra/docker/grafana.Dockerfile
+    profiles: [observability]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_PATHS_LOGS: /tmp
+    ports: ["127.0.0.1:${VELIN_PORT_GRAFANA:-3001}:3000"]
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/velin.yaml:ro
+      - ./infra/observability/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/velin.yaml:ro
+      - ./infra/observability/grafana/velin.json:/etc/grafana/velin/velin.json:ro
+    depends_on: [prometheus]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:3000/api/health]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  temporal-data:
+  artifact-data:
+  prometheus-data:
+  grafana-data:
+
+secrets:
+  capabilities-token:
+    file: ./.local/capabilities-token

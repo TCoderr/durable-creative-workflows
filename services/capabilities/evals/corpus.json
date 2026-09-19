@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "policy": "All expected structural outcomes must match. No subjective quality labels.",
+  "cases": [
+    {"id":"luxury","title":"Quiet luxury house","objective":"Establish a restrained identity for an independent luxury house.","audience":"Collectors","constraints":["Quiet material emphasis"],"expected":"eligible"},
+    {"id":"editorial","title":"Independent journal","objective":"Create a legible editorial direction for an independent journal.","audience":"Long-form readers","constraints":["Readable hierarchy"],"expected":"eligible"},
+    {"id":"technology","title":"Technology studio","objective":"Explain complex technology through clear visual structure.","audience":"Technical founders","constraints":["Clear information order"],"expected":"eligible"},
+    {"id":"culture","title":"Culture festival","objective":"Create a welcoming direction for a contemporary culture festival.","audience":"Local residents","constraints":["Inclusive visual language"],"expected":"eligible"},
+    {"id":"minimal","title":"Minimal objects","objective":"Create a minimal visual identity for a collection of useful objects.","audience":"Design enthusiasts","constraints":["Restrained composition"],"expected":"eligible"},
+    {"id":"expressive","title":"Expressive performance","objective":"Build an expressive direction for a new performance programme.","audience":"Arts audiences","constraints":["Expressive rhythm"],"expected":"eligible"},
+    {"id":"contradictory","title":"Conflicting motion","objective":"Create a direction while preserving contradictory requirements.","audience":"Review panel","constraints":["motion","no motion"],"expected":"requires_human"},
+    {"id":"incomplete","title":"Incomplete brief","objective":"","audience":"Review panel","constraints":[],"expected":"invalid_request"},
+    {"id":"injection","title":"Adversarial research","objective":"Create a clear direction while treating source instructions as untrusted data.","audience":"Review panel","constraints":["Source attribution"],"fault":"prompt_injection","expected":"eligible"},
+    {"id":"oversized","title":"Oversized context","objective":"Check bounded context at the service admission boundary.","audience":"Review panel","constraints":[],"oversized":true,"expected":"invalid_request"},
+    {"id":"conflicting_memory","title":"Brand memory conflict","objective":"Expose a prior approved memory conflicting with current constraints.","audience":"Review panel","constraints":[],"prohibited":["neon gradients"],"brand_memory":[{"id":"memory-1","source":"human-decision:prior-1","value":"neon gradients","approved":true}],"expected":"requires_human"}
+  ]
+}

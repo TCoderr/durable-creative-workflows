@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ece9e1" />
+    <link rel="icon" href="/favicon.svg" />
+    <title>Commission — VELIN</title>
+    <meta
+      name="description"
+      content="A creative commission run as a durable workflow: brief, execution, review, approval bound to the exact revision, and a delivered artifact with its record."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="./commission.css" />
+  </head>
+  <body class="commission-page">
+    <a class="skip-link" href="#folio">Skip to commission</a>
+    <header class="folio-nav">
+      <a class="nav-brand" href="/">VELIN</a
+      ><a class="meta" href="/#commission">Return to the index ↗</a>
+    </header>
+    <main id="folio" class="folio">
+      <div class="section-head">
+        <p class="meta">06 — Intake</p>
+        <p class="meta section-folio">p. 065</p>
+      </div>
+      <h1 class="display folio-title">
+        Send the brief.<br />The workflow keeps <em>the record.</em>
+      </h1>
+      <p class="folio-intro">
+        A brief becomes a run of steps, a reviewed revision, a decision bound to
+        that exact revision, and a delivered artifact. Every step, failure,
+        pause and decision stays in the record.
+      </p>
+      <p id="notice" role="status" aria-live="polite" class="folio-notice"></p>
+      <section
+        id="access-section"
+        class="folio-section"
+        aria-labelledby="access-title"
+      >
+        <div>
+          <p class="meta">01 / Access</p>
+          <h2 id="access-title" class="display">Your private folio.</h2>
+          <p>
+            Use your commission access token. It stays in this tab until you
+            leave or close the folio.
+          </p>
+        </div>
+        <form id="access-form">
+          <label for="access-token">Access token</label
+          ><input
+            id="access-token"
+            name="token"
+            type="password"
+            autocomplete="off"
+            required
+            maxlength="8192"
+          /><button class="folio-button" type="submit">
+            Open my folio <span aria-hidden="true">→</span>
+          </button>
+        </form>
+      </section>
+      <div id="workspace" hidden>
+        <div class="folio-session">
+          <p id="provider-notice" class="meta">
+            Execution mode is recorded with each result.
+          </p>
+          <button id="sign-out" type="button">Close folio</button>
+        </div>
+        <section
+          id="brief-section"
+          class="folio-section"
+          aria-labelledby="brief-title"
+        >
+          <div>
+            <p class="meta">02 / The brief</p>
+            <h2 id="brief-title" class="display">
+              What must<br /><em>this become?</em>
+            </h2>
+            <p>
+              Describe the intended outcome and the people it should reach. Keep
+              each hard constraint on its own line.
+            </p>
+            <div id="commission-list" class="commission-list"></div>
+          </div>
+          <form id="brief-form">
+            <label for="title">Commission title</label
+            ><input
+              id="title"
+              name="title"
+              required
+              minlength="3"
+              maxlength="160"
+              placeholder="An identity for a publisher of long books"
+            />
+            <label for="objective">The intention</label
+            ><textarea
+              id="objective"
+              name="objective"
+              required
+              minlength="20"
+              maxlength="2000"
+              rows="4"
+              placeholder="What should this direction achieve?"
+            ></textarea>
+            <label for="audience">The audience</label
+            ><input
+              id="audience"
+              name="audience"
+              required
+              minlength="3"
+              maxlength="300"
+            />
+            <label for="constraints"
+              >Hard constraints <span>(one per line)</span></label
+            ><textarea
+              id="constraints"
+              name="constraints"
+              maxlength="4000"
+              rows="3"
+              placeholder="Accessible contrast&#10;Respect reduced motion"
+            ></textarea>
+            <label for="prohibited"
+              >Patterns to avoid <span>(one per line)</span></label
+            ><textarea
+              id="prohibited"
+              name="prohibited"
+              maxlength="2000"
+              rows="2"
+            ></textarea>
+            <button class="folio-button" type="submit">
+              Submit the brief <span aria-hidden="true">→</span>
+            </button>
+          </form>
+        </section>
+        <section
+          id="process-section"
+          class="folio-section"
+          aria-labelledby="process-title"
+          hidden
+        >
+          <div>
+            <p class="meta">03 / In execution</p>
+            <h2 id="process-title" class="display">
+              The work,<br /><em>as it runs.</em>
+            </h2>
+            <p id="commission-title"></p>
+            <p id="stage-description" role="status" aria-live="polite"></p>
+            <p id="run-label" class="meta"></p>
+            <button
+              id="start-existing"
+              class="folio-button"
+              type="button"
+              hidden
+            >
+              Begin execution →
+            </button>
+            <button id="cancel" class="text-action" type="button">
+              Cancel this commission
+            </button>
+          </div>
+          <div>
+            <ol id="stage-list" class="stage-list"></ol>
+            <p id="connection-status" class="meta"></p>
+            <button id="refresh" class="text-action" type="button">
+              Refresh progress
+            </button>
+          </div>
+        </section>
+        <section
+          id="direction-section"
+          class="folio-section direction-section"
+          aria-labelledby="direction-title"
+          hidden
+        >
+          <div>
+            <p class="meta">04 / Revision under review</p>
+            <h2 id="direction-title" class="display"></h2>
+            <p id="execution-mode"></p>
+            <p id="revision-label" class="meta"></p>
+          </div>
+          <div id="direction-content" class="direction-content"></div>
+        </section>
+        <section
+          id="review-section"
+          class="folio-section"
+          aria-labelledby="review-title"
+          hidden
+        >
+          <div>
+            <p class="meta">05 / Your decision</p>
+            <h2 id="review-title" class="display">
+              Your eye.<br /><em>Your decision.</em>
+            </h2>
+            <p id="critique"></p>
+            <p id="approval-binding" class="meta"></p>
+            <p>
+              Approval binds to the exact revision shown here. A request for
+              revision returns it to execution. Rejection closes the commission.
+            </p>
+          </div>
+          <form id="review-form">
+            <label for="reason-code">Reason</label
+            ><select id="reason-code" required>
+              <option value="BRIEF_ALIGNED">Aligned with the brief</option>
+              <option value="CONSTRAINT_CHANGE">
+                Constraints need attention
+              </option>
+              <option value="CREATIVE_REFINEMENT">Creative refinement</option>
+              <option value="NOT_SUITABLE">Direction is not suitable</option>
+            </select>
+            <label for="reason">Review notes</label
+            ><textarea
+              id="reason"
+              rows="3"
+              required
+              minlength="3"
+              maxlength="1000"
+              placeholder="Record what makes this revision work, or what needs to change."
+            ></textarea>
+            <div class="review-actions">
+              <button
+                class="folio-button"
+                type="submit"
+                name="action"
+                value="APPROVE"
+              >
+                Approve this revision →</button
+              ><button
+                class="text-action"
+                type="submit"
+                name="action"
+                value="REVISE"
+              >
+                Request revision</button
+              ><button
+                class="text-action"
+                type="submit"
+                name="action"
+                value="REJECT"
+              >
+                Reject direction
+              </button>
+            </div>
+          </form>
+        </section>
+        <section
+          id="evidence-section"
+          class="folio-section"
+          aria-labelledby="evidence-title"
+          hidden
+        >
+          <div>
+            <p class="meta">06 / The record</p>
+            <h2 id="evidence-title" class="display">
+              Nothing<br /><em>without a source.</em>
+            </h2>
+            <p>
+              Inspect the runs, steps, revisions, approvals, decisions, artifacts
+              and provenance of this commission.
+            </p>
+            <button
+              id="download-artifact"
+              class="folio-button"
+              type="button"
+              hidden
+            >
+              Download the artifact ↓
+            </button>
+            <button id="publish" class="text-action" type="button">
+              Publish the record to the index
+            </button>
+            <p id="publication" class="meta"></p>
+          </div>
+          <div>
+            <button id="load-provenance" class="text-action" type="button">
+              Read the provenance
+            </button>
+            <pre
+              id="provenance"
+              tabindex="0"
+              aria-label="Machine-readable provenance"
+              hidden
+            ></pre>
+            <details open>
+              <summary>Workflow record</summary>
+              <ol id="timeline" class="timeline"></ol>
+            </details>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer class="folio-footer meta">
+      <span>VELIN — Human decision / Durable execution</span
+      ><span>Every decision on record.</span>
+    </footer>
+    <script type="module" src="./commission.js"></script>
+  </body>
+</html>

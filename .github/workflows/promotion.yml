@@ -1,0 +1,34 @@
+name: Review immutable deployment promotion
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [dev, staging, prod]
+        required: true
+      release_manifest:
+        description: Reviewed release JSON path already present in this commit
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {persist-credentials: false}
+      - name: Validate immutable artifact provenance
+        env:
+          RELEASE_MANIFEST: ${{ inputs.release_manifest }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: python3 scripts/prepare-promotion.py
+      # No build, push, kubectl apply, Terraform apply, remote Git mutation or Argo
+      # sync occurs here. Operator reviews candidate and target secrets/networking.
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: reviewed-promotion-${{ inputs.environment }}
+          path: .local/promotion.json
+          include-hidden-files: true
+          if-no-files-found: error

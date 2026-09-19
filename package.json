@@ -1,0 +1,36 @@
+{
+  "name": "durable-creative-workflows",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "VELIN — durable creative workflows. Editorial frontend, Go/Temporal control plane and Python capability service.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint *.js workflow commission scripts tests",
+    "format": "prettier --write *.js workflow commission scripts tests *.json *.mjs",
+    "format:check": "prettier --check *.js workflow commission scripts tests *.json *.mjs",
+    "placeholders": "node scripts/placeholders.mjs",
+    "test:e2e": "playwright test",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "local:env": "node scripts/local-env.mjs",
+    "secret:scan": "node scripts/secret-scan.mjs",
+    "dashboard": "node scripts/grafana-dashboard.mjs",
+    "test:stack": "playwright test tests/record.spec.mjs tests/commission.spec.mjs"
+  },
+  "dependencies": {
+    "three": "^0.181.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "vite": "^7.1.12"
+  },
+  "engines": {
+    "node": ">=24 <27"
+  }
+}

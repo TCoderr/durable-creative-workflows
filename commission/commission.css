@@ -1,0 +1,240 @@
+.commission-page {
+  min-height: 100vh;
+}
+.folio-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem var(--pad-x);
+  border-bottom: 1px solid var(--rule);
+}
+.folio {
+  padding: 3rem var(--pad-x) 0;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.folio-title {
+  font-size: var(--t-display-xl);
+  margin: 3rem 0 2rem;
+}
+.folio-title em,
+.folio-section h2 em {
+  color: var(--muted);
+}
+.folio-intro {
+  max-width: 60ch;
+}
+.folio-notice {
+  min-height: 2rem;
+  margin: 1.5rem 0;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.folio-section {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: clamp(2rem, 6vw, 7rem);
+  border-top: 1px solid var(--rule-strong);
+  padding: 3.5rem 0;
+}
+.folio-section[hidden],
+.commission-page [hidden] {
+  display: none;
+}
+.folio-section h2 {
+  font-size: var(--t-display-md);
+  margin: 1.4rem 0;
+}
+.folio-section p {
+  max-width: 48ch;
+}
+.folio-section p + p {
+  margin-top: 1rem;
+}
+.folio-section form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.folio-section label {
+  margin-bottom: 0.5rem;
+  font-size: var(--t-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.folio-section label span {
+  text-transform: none;
+  color: var(--muted);
+}
+.folio-section input,
+.folio-section textarea,
+.folio-section select {
+  width: 100%;
+  padding: 0.85rem 0.7rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 0;
+  margin-bottom: 1.5rem;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+}
+.folio-section textarea {
+  resize: vertical;
+}
+.folio-button {
+  display: inline-flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  padding: 0.95rem 1.6rem;
+  font-size: var(--t-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--bg);
+  background: var(--ink);
+  width: fit-content;
+}
+.folio-button:hover {
+  background: var(--ink-soft);
+}
+.commission-page button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.folio-session {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1rem 0;
+}
+.folio-session button,
+.text-action {
+  font-size: var(--t-meta);
+  text-decoration: underline;
+  text-underline-offset: 0.35em;
+  padding: 0.6rem 0;
+}
+.text-action {
+  margin-top: 1rem;
+  text-align: left;
+}
+.stage-list {
+  border-top: 1px solid var(--rule);
+  counter-reset: stages;
+}
+.stage-list li {
+  display: flex;
+  gap: 1.4rem;
+  align-items: baseline;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+}
+.stage-list li::before {
+  counter-increment: stages;
+  content: counter(stages, decimal-leading-zero);
+  font-size: var(--t-meta);
+}
+.stage-list li[aria-current='step'] {
+  color: var(--ink);
+}
+.stage-list li[aria-current='step']::after {
+  content: '●';
+  color: var(--accent);
+  margin-left: auto;
+  font-size: 0.65rem;
+}
+.direction-content h3 {
+  font-size: var(--t-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  margin-top: 1.5rem;
+}
+.direction-content h3:first-child {
+  margin-top: 0;
+}
+.direction-content p,
+.direction-content ul {
+  padding-top: 0.7rem;
+}
+.direction-content li {
+  padding: 0.3rem 0;
+}
+.direction-content li::before {
+  content: '↳ ';
+  color: var(--muted);
+}
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem 1.6rem;
+}
+.review-actions .text-action {
+  margin-top: 0;
+}
+.commission-list {
+  margin-top: 2rem;
+}
+.commission-list button {
+  display: block;
+  text-align: left;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+  width: 100%;
+}
+.timeline {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+}
+.timeline li {
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+}
+.folio-section pre {
+  max-height: 35rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg-soft);
+  border: 1px solid var(--rule);
+  padding: 1rem;
+  margin: 1rem 0;
+  font: 0.75rem/1.7 var(--font-mono);
+}
+.folio-section details {
+  margin-top: 1.8rem;
+}
+.folio-section summary {
+  cursor: pointer;
+}
+.folio-footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 3rem;
+  padding: 2rem var(--pad-x);
+  border-top: 1px solid var(--rule);
+}
+@media (max-width: 760px) {
+  .folio-section {
+    grid-template-columns: 1fr;
+    padding: 2.5rem 0;
+  }
+  .folio-title {
+    font-size: clamp(3rem, 12vw, 6rem);
+  }
+  .folio-nav .meta {
+    font-size: 0.6rem;
+  }
+  .folio-session {
+    flex-wrap: wrap;
+  }
+}

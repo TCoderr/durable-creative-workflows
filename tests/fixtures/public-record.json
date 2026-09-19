@@ -1,0 +1,338 @@
+{
+  "commission": {
+    "id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+    "title": "The Long Book",
+    "objective": "An identity system for a publisher of long books.",
+    "audience": "Readers of long books",
+    "created_at": "2026-06-01T09:12:00Z"
+  },
+  "workflow": {
+    "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+    "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+    "version": 1,
+    "stage": "COMPLETED",
+    "movement": "DONE",
+    "terminal": true,
+    "revision_number": 1,
+    "review_round": 2,
+    "can_approve": true,
+    "decision_id": "approve-0002",
+    "artifact_id": "5c8a1f6e-2222-4c1e-9d5e-1a2b3c4d5e6f",
+    "steps_completed": 10,
+    "stale_decisions": 0
+  },
+  "runs": [
+    {
+      "id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "temporal_run_id": "run-1",
+      "attempt": 1,
+      "started_at": "2026-06-01T09:14:00Z"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f:brief:0",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "capability": "brief",
+      "revision_number": 0,
+      "provider": "deterministic-primary",
+      "model": "velin-structural-fixture-v1",
+      "live": false,
+      "prompt_id": "velin.brief",
+      "prompt_version": "1.0.0",
+      "evaluations_passed": true,
+      "created_at": "2026-06-01T09:15:00Z"
+    },
+    {
+      "step_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f:critique:1",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "capability": "critique",
+      "revision_number": 1,
+      "provider": "deterministic-primary",
+      "model": "velin-structural-fixture-v1",
+      "live": false,
+      "prompt_id": "velin.critique",
+      "prompt_version": "1.0.0",
+      "evaluations_passed": true,
+      "created_at": "2026-06-12T09:15:00Z"
+    }
+  ],
+  "revisions": [
+    {
+      "id": "7a1b2c3d-3333-4c1e-9d5e-1a2b3c4d5e6f",
+      "number": 1,
+      "direction_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "title": "Quiet edition",
+      "produced_by": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f:art_direction:0",
+      "requires_revision": false,
+      "hard_constraints_pass": true,
+      "created_at": "2026-06-03T16:40:00Z"
+    },
+    {
+      "id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f",
+      "number": 2,
+      "parent_id": "7a1b2c3d-3333-4c1e-9d5e-1a2b3c4d5e6f",
+      "direction_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "title": "Quiet edition, revision 1",
+      "produced_by": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f:revision:1",
+      "requires_revision": false,
+      "hard_constraints_pass": true,
+      "created_at": "2026-06-12T09:15:00Z"
+    }
+  ],
+  "approvals": [
+    {
+      "id": "8b2c3d4e-5555-4c1e-9d5e-1a2b3c4d5e6f",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "revision_id": "7a1b2c3d-3333-4c1e-9d5e-1a2b3c4d5e6f",
+      "round": 1,
+      "requested_at": "2026-06-03T16:41:00Z",
+      "deadline_at": "2026-06-10T16:41:00Z",
+      "status": "decided",
+      "decision_id": "revise-0001",
+      "action": "REVISE"
+    },
+    {
+      "id": "8b2c3d4e-6666-4c1e-9d5e-1a2b3c4d5e6f",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "revision_id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f",
+      "round": 2,
+      "requested_at": "2026-06-12T09:16:00Z",
+      "deadline_at": "2026-06-19T09:16:00Z",
+      "status": "decided",
+      "decision_id": "approve-0002",
+      "action": "APPROVE"
+    }
+  ],
+  "decisions": [
+    {
+      "decision_id": "revise-0001",
+      "approval_id": "8b2c3d4e-5555-4c1e-9d5e-1a2b3c4d5e6f",
+      "revision_id": "7a1b2c3d-3333-4c1e-9d5e-1a2b3c4d5e6f",
+      "action": "REVISE",
+      "reason_code": "CONSTRAINT_CHANGE",
+      "reason": "Widen the grid.",
+      "actor_id": "commission owner",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "decided_at": "2026-06-11T08:15:00Z"
+    },
+    {
+      "decision_id": "approve-0002",
+      "approval_id": "8b2c3d4e-6666-4c1e-9d5e-1a2b3c4d5e6f",
+      "revision_id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f",
+      "action": "APPROVE",
+      "reason_code": "BRIEF_ALIGNED",
+      "reason": "Holds at all three page sizes.",
+      "actor_id": "commission owner",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "decided_at": "2026-06-13T10:00:00Z"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "5c8a1f6e-2222-4c1e-9d5e-1a2b3c4d5e6f",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "revision_id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f",
+      "decision_id": "approve-0002",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "created_at": "2026-06-13T10:01:00Z"
+    }
+  ],
+  "provenance": [
+    {
+      "id": "artifact:5c8a1f6e-2222-4c1e-9d5e-1a2b3c4d5e6f",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "revision_id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f",
+      "capability": "artifact",
+      "inputs": {
+        "step_ids": ["3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f:brief:0"],
+        "source_ids": [],
+        "brief_hash": ""
+      },
+      "output_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.json",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "approval_id": "8b2c3d4e-6666-4c1e-9d5e-1a2b3c4d5e6f",
+      "decision_id": "approve-0002",
+      "created_at": "2026-06-13T10:01:00Z"
+    }
+  ],
+  "events": [
+    {
+      "sequence": 1,
+      "id": "e1",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "commission.received",
+      "kind": "commission",
+      "subject": "Commission 3f1d5b3c",
+      "detail": { "title": "The Long Book" },
+      "created_at": "2026-06-01T09:12:00Z"
+    },
+    {
+      "sequence": 2,
+      "id": "e2",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "run.started",
+      "kind": "run",
+      "subject": "Run 1",
+      "detail": { "attempt": 1 },
+      "created_at": "2026-06-01T09:14:00Z"
+    },
+    {
+      "sequence": 3,
+      "id": "e3",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "step.completed",
+      "kind": "step",
+      "subject": "Step brief, revision 0",
+      "detail": {
+        "capability": "brief",
+        "provider": "deterministic-primary",
+        "live": false,
+        "prompt_id": "velin.brief",
+        "prompt_version": "1.0.0"
+      },
+      "created_at": "2026-06-01T09:15:00Z"
+    },
+    {
+      "sequence": 4,
+      "id": "e4",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "step.failed",
+      "kind": "failure",
+      "subject": "Step research, revision 0, attempt 1",
+      "detail": {
+        "capability": "research",
+        "attempt": 1,
+        "code": "PROVIDER_TIMEOUT"
+      },
+      "created_at": "2026-06-01T09:16:00Z"
+    },
+    {
+      "sequence": 5,
+      "id": "e5",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "revision.created",
+      "kind": "revision",
+      "subject": "Revision 1",
+      "detail": {
+        "number": 1,
+        "direction_hash": "aaaaaaaaaaaa",
+        "requires_revision": false
+      },
+      "created_at": "2026-06-03T16:40:00Z"
+    },
+    {
+      "sequence": 6,
+      "id": "e6",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "approval.requested",
+      "kind": "approval",
+      "subject": "Approval round 1",
+      "detail": {
+        "round": 1,
+        "revision_id": "7a1b2c3d-3333-4c1e-9d5e-1a2b3c4d5e6f"
+      },
+      "created_at": "2026-06-03T16:41:00Z"
+    },
+    {
+      "sequence": 7,
+      "id": "e7",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "decision.recorded",
+      "kind": "decision",
+      "subject": "Decision revise-0001",
+      "detail": {
+        "action": "REVISE",
+        "revision_id": "7a1b2c3d-3333-4c1e-9d5e-1a2b3c4d5e6f",
+        "reason_code": "CONSTRAINT_CHANGE",
+        "waited_ms": 660000000
+      },
+      "created_at": "2026-06-11T08:15:00Z"
+    },
+    {
+      "sequence": 8,
+      "id": "e8",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "revision.created",
+      "kind": "revision",
+      "subject": "Revision 2",
+      "detail": {
+        "number": 2,
+        "direction_hash": "bbbbbbbbbbbb",
+        "requires_revision": false
+      },
+      "created_at": "2026-06-12T09:15:00Z"
+    },
+    {
+      "sequence": 9,
+      "id": "e9",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "approval.requested",
+      "kind": "approval",
+      "subject": "Approval round 2",
+      "detail": {
+        "round": 2,
+        "revision_id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f"
+      },
+      "created_at": "2026-06-12T09:16:00Z"
+    },
+    {
+      "sequence": 10,
+      "id": "e10",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "decision.recorded",
+      "kind": "decision",
+      "subject": "Decision approve-0002",
+      "detail": {
+        "action": "APPROVE",
+        "revision_id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f",
+        "reason_code": "BRIEF_ALIGNED",
+        "waited_ms": 89000000
+      },
+      "created_at": "2026-06-13T10:00:00Z"
+    },
+    {
+      "sequence": 11,
+      "id": "e11",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "artifact.recorded",
+      "kind": "artifact",
+      "subject": "Artifact 5c8a1f6e",
+      "detail": {
+        "artifact_id": "5c8a1f6e-2222-4c1e-9d5e-1a2b3c4d5e6f",
+        "revision_id": "7a1b2c3d-4444-4c1e-9d5e-1a2b3c4d5e6f",
+        "decision_id": "approve-0002"
+      },
+      "created_at": "2026-06-13T10:01:00Z"
+    },
+    {
+      "sequence": 12,
+      "id": "e12",
+      "commission_id": "3f1d5b3c-3a0f-4c1e-9d5e-1a2b3c4d5e6f",
+      "run_id": "9d0c7a2e-1111-4c1e-9d5e-1a2b3c4d5e6f",
+      "type": "workflow.completed",
+      "kind": "workflow",
+      "subject": "Workflow 3f1d5b3c",
+      "detail": {
+        "outcome": "completed",
+        "duration_ms": 1040000000,
+        "stage": "COMPLETED"
+      },
+      "created_at": "2026-06-13T10:01:00Z"
+    }
+  ],
+  "public": true,
+  "source": "temporal+postgresql"
+}
