@@ -67,16 +67,24 @@ def api(path: str, method: str = 'GET', body=None, *, token: str | None = TOKEN,
         headers['traceparent'] = '00-' + trace_id + '-' + uuid.uuid4().hex[:16] + '-01'
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
     request = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            return response.status, json.load(response)
-    except urllib.error.HTTPError as error:
-        data = error.read()
+    # The API rate-limits bursts per subject and per address and answers 429 with
+    # Retry-After before processing anything, so honouring it and retrying is the
+    # correct client behaviour; the limit itself is exercised by the security phase.
+    for _ in range(30):
         try:
-            result = json.loads(data)
-        except ValueError:
-            result = {'unexpected_response': data.decode(errors='replace')[:150]}
-        return error.code, result
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return response.status, json.load(response)
+        except urllib.error.HTTPError as error:
+            data = error.read()
+            try:
+                result = json.loads(data)
+            except ValueError:
+                result = {'unexpected_response': data.decode(errors='replace')[:150]}
+            if error.code == 429:
+                time.sleep(max(1.0, float(error.headers.get('Retry-After') or 1)))
+                continue
+            return error.code, result
+    raise AssertionError(f'{method} {path}: rate limited for too long')
 
 
 def require(path: str, method: str = 'GET', body=None, *, statuses=(200,), **kwargs):
