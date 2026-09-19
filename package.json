@@ -20,7 +20,7 @@
     "test:stack": "playwright test tests/record.spec.mjs tests/commission.spec.mjs"
   },
   "dependencies": {
-    "three": "^0.181.0"
+    "three": "^0.186.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
