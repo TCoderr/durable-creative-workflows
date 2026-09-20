@@ -1,8 +1,9 @@
 # Local validation and operational boundaries
 
-This document separates implementation from executed checks. No cloud service,
-Git remote or deployment has been created; every result below was produced on
-the local Compose topology or by offline validation.
+This document separates implementation from executed checks. No cloud service
+or deployment has been created; every result below was produced on the local
+Compose topology or by offline validation, and the GitHub Actions workflow
+repeats the same gates on an ephemeral runner.
 
 ## Executed verification
 
