@@ -6,7 +6,7 @@ RUN tar -xzf /tmp/upstream.tar.gz --strip-components=1 -C /src
 RUN go get golang.org/x/crypto@v0.55.0 google.golang.org/grpc@v1.83.2 github.com/apache/thrift@v0.24.0
 RUN CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/temporal ./cmd/temporal
 
-FROM temporalio/temporal:1.8.3@sha256:cea463d98a8d6def4420f903ea5c3fcd0d85c8d10fbcc2770a50c12fff2eb26d AS runtime
+FROM temporalio/temporal:1.9.1@sha256:ad4c82c97bd12b417d1ea942610dbcd511afb250c4d5ed26c694009533df447e AS runtime
 USER root
 RUN apk add --no-cache 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0'
 COPY --from=build /out/temporal /usr/local/bin/temporal
